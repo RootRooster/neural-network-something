@@ -46,8 +46,6 @@ def train_step(model, batch, criterion, optimizer, device, with_coordinates=True
     images = batch['image'].to(device)
     aneurysm_present = batch['aneurysm_present'].to(device)
     aneurysm_locations = batch['aneurysm_locations'].to(device)
-    if with_coordinates:
-        coordinate_targets = batch['coordinate_targets'].to(device)
     
     # Forward pass
     optimizer.zero_grad()
@@ -58,7 +56,7 @@ def train_step(model, batch, criterion, optimizer, device, with_coordinates=True
         'aneurysm_locations': aneurysm_locations,
     }
     if with_coordinates:
-        targets['coordinate_targets'] = coordinate_targets
+        targets['coordinate_targets'] = batch['coordinate_targets'].to(device)
     
     loss_dict = criterion(predictions, targets)
     loss_dict['total_loss'].backward()
@@ -308,7 +306,6 @@ def train_brain_aneurysm_model(config):
         if config['with_coordinates']:
             avg_train_coordinate = np.mean(train_coordinate_losses)
         
-        # TODO: Continue from here
         # Validation phase
         print("Running validation...")
         validation_loss_metrics, other_metrics_packed = evaluate_model(model, val_loader, criterion, device, custom_metrics, config['with_coordinates'])
@@ -443,7 +440,7 @@ def main():
         # Loss weights
         'presence_weight': 1.0,
         'location_weight': 1.5,
-        'coordinate_weight': None,  # 3.0, # None if you don't use coordinates
+        'coordinate_weight': 3,  # 3.0, # None if you don't use coordinates
 
         # Logging
         'log_every': 25,

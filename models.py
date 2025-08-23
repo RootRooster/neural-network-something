@@ -132,7 +132,60 @@ class BrainAneurysmCNN(nn.Module):
 class BrainAneurysmCoordCNN(BrainAneurysmCNN):
     def __init__(self, num_classes=13, dropout_rate=0.3):
         super().__init__(num_classes, dropout_rate)
-        ## TODO IMPLEMENT THIS
+        self.shared_features = self.classifier
+        del self.classifier
+        
+        self.aneurysm_present_head = nn.Sequential(
+            nn.Dropout(dropout_rate),
+            nn.Linear(512, 1)
+        )
+        
+        self.location_classification_head = nn.Sequential(
+            nn.Dropout(dropout_rate),
+            nn.Linear(512, num_classes)
+        )
+
+        self.coordinate_features = nn.Sequential(
+            nn.Dropout(dropout_rate),
+            nn.Linear(512,512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate)
+        )
+
+        self.coordinate_regression_head = nn.Sequential(
+            nn.Linear(512, num_classes * 2),  # 2 coordinates (x, y) per class
+            nn.Sigmoid()
+        )
+        
+        self._initialize_weights()
+    
+    def forward(self, x):
+        # Feature extraction
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
+        x = self.conv4(x)
+        x = self.conv5(x)
+        
+        # Flatten
+        x = x.view(x.size(0), -1)
+        
+        shared_features = self.shared_features(x)
+        
+        aneurysm_present = self.aneurysm_present_head(shared_features)
+        location_logits = self.location_classification_head(shared_features)
+        
+        coord_features = self.coordinate_features(shared_features)
+        coordinate_preds = self.coordinate_regression_head(coord_features)
+        
+        batch_size = coordinate_preds.shape[0]
+        coordinate_preds = coordinate_preds.view(batch_size, self.num_classes, 2)
+        return {
+            'aneurysm_present': aneurysm_present,
+            'locations': location_logits,
+            'coordinates': coordinate_preds
+        }
+        
 
 class AneurysmLoss(nn.Module):
     """
@@ -184,9 +237,9 @@ class AneurysmLoss(nn.Module):
         }
 
         if self.with_coordinates:
-            if 'coordinates' not in predictions or 'coordinates_targets' not in targets:
-                raise ValueError("Predictions and targets must include 'coordinates' and 'coordinates_targets' when with_coordinates is True.")
-            coord_targets = targets['coordinates_targets']
+            if 'coordinates' not in predictions or 'coordinate_targets' not in targets:
+                raise ValueError("Predictions and targets must include 'coordinates' and 'coordinate_targets' when with_coordinates is True.")
+            coord_targets = targets['coordinate_targets']
             coord_preds = predictions['coordinates']
             coord_mask = targets['aneurysm_locations']
 
@@ -204,7 +257,7 @@ class AneurysmLoss(nn.Module):
             coordinate_loss = masked_coord_loss.sum() / (valid_coords + 1e-8)
             total_loss += self.coordinate_weight * coordinate_loss
             results['total_loss'] = total_loss 
-            results['coordinates'] = coord_preds
+            results['coordinate_loss'] = coordinate_loss
         return results
 
 
