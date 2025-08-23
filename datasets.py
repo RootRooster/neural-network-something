@@ -95,7 +95,7 @@ class BrainAneurysmDataset(Dataset):
                 self.labels_df['SOPInstanceUID'].astype(str)
             )
         
-        if normalization in ['zscore', 'minmax'] and intensity_range is None:
+        if normalization in ['zscore', 'minmax', 'percentile'] and intensity_range is None:
             print("Computing global dataset statistics...")
             self._compute_global_stats()
         
