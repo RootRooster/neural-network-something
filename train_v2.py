@@ -212,17 +212,28 @@ def train_brain_aneurysm_model(config):
     
     # Log model to wandb
     wandb.watch(model, log_freq=100)
-    
+
     # Create loss function
-    # add in the above lines to try out class weights - weights that are class wise
-    # class_weights = train_dataset.get_class_weights().to(device)
-    criterion = AneurysmLoss(
-        presence_weight=config['presence_weight'],
-        location_weight=config['location_weight'],
-        coordinate_weight=config['coordinate_weight'],
-        with_coordinates=config['with_coordinates'],
-    )
-    
+    criterion = None
+    if config['balance_classes']:
+        class_weights = train_dataset.get_class_weights().to(device)
+        criterion = AneurysmLoss(
+            location_weights=class_weights,
+            presence_weight=config['presence_weight'],
+            location_weight=config['location_weight'],
+            coordinate_weight=config['coordinate_weight'],
+            with_coordinates=config['with_coordinates'],
+        )
+    else:
+        criterion = AneurysmLoss(
+            presence_weight=config['presence_weight'],
+            location_weight=config['location_weight'],
+            coordinate_weight=config['coordinate_weight'],
+            with_coordinates=config['with_coordinates'],
+        )
+    if not criterion:
+        raise Exception("No loss function found! Add loss function to training loop")
+
     # Create optimizer
     if config['optimizer'] == 'adamw':
         optimizer = optim.AdamW(
@@ -306,7 +317,6 @@ def train_brain_aneurysm_model(config):
         if config['with_coordinates']:
             avg_train_coordinate = np.mean(train_coordinate_losses)
         
-        # Validation phase
         print("Running validation...")
         validation_loss_metrics, other_metrics_packed = evaluate_model(model, val_loader, criterion, device, custom_metrics, config['with_coordinates'])
         other_metrics = extract_metrics_results(*other_metrics_packed)
@@ -441,6 +451,7 @@ def main():
         'presence_weight': 1.0,
         'location_weight': 1.5,
         'coordinate_weight': 3,  # 3.0, # None if you don't use coordinates
+        'balance_classes': True, # if or not if to use the custom per class weights
 
         # Logging
         'log_every': 25,
