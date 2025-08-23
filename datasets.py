@@ -157,7 +157,7 @@ class BrainAneurysmDataset(Dataset):
                 min_val, max_val = np.min(image), np.max(image)
 
             image = np.clip(image, min_val, max_val)
-            image = (image - min_val) / (max_val - min_val)
+            image = (image - min_val) / (max_val - min_val + 1e-8)
             
         elif self.normalization == 'zscore': # Aka standard score normalization
             image = (image - self.global_mean) / (self.global_std + 1e-8)
@@ -170,7 +170,7 @@ class BrainAneurysmDataset(Dataset):
         elif self.normalization == 'percentile':
             # Robust normalization using percentiles
             image = np.clip(image, self.percentile_1, self.percentile_99)
-            image = (image - self.percentile_1) / (self.percentile_99 - self.percentile_1)
+            image = (image - self.percentile_1) / (self.percentile_99 - self.percentile_1 + 1e-8)
 
         return image
     
@@ -223,6 +223,9 @@ class BrainAneurysmDataset(Dataset):
         
         # Load the numpy array
         image = np.load(npy_path)
+
+        # normalize depending on self.normalization
+        image = self._normalize_image(image)
 
         # Coordinates keypoint detection
         coordinates = torch.zeros((len(self.aneurysm_columns), 2), dtype=torch.float32)
