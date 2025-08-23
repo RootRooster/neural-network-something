@@ -223,6 +223,10 @@ class BrainAneurysmDataset(Dataset):
         
         # Load the numpy array
         image = np.load(npy_path)
+        
+        # Convert to float32 and normalize if needed
+        if image.dtype != np.float32:
+            image = image.astype(np.float32)
 
         # normalize depending on self.normalization
         image = self._normalize_image(image)
@@ -258,10 +262,6 @@ class BrainAneurysmDataset(Dataset):
                     coordinates[target_idx, 0] = x_scaled / self.target_size[1] # Normalize x
                     coordinates[target_idx, 1] = y_scaled / self.target_size[0] # Normalize y
 
-        # Convert to float32 and normalize if needed
-        if image.dtype != np.float32:
-            image = image.astype(np.float32)
-        
         # Add channel dimension (converting (H, W) to (1, H, W))
         image = torch.from_numpy(image).float()
         image = image.unsqueeze(0)
@@ -622,8 +622,6 @@ def analyze_image_dimensions(dataset, num_samples=100):
         print("   • Coordinate normalization needs per-image dimensions")
         
     return stats
-
-
 
 # Example of how to use the dataset
 if __name__ == "__main__":

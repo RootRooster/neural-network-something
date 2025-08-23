@@ -434,7 +434,7 @@ def main():
         'num_workers': 4,
         
         # Training configuration
-        'num_epochs': 35,
+        'num_epochs': 1,
         'learning_rate': 0.001,
         'weight_decay': 0.01,
         'optimizer': 'adamw',  # 'adamw' or 'adam'
