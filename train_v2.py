@@ -146,7 +146,7 @@ def train_brain_aneurysm_model(config):
     wandb.init(
         project="brain-aneurysm-detection",
         config=config,
-        name=f"{config['model_name']}"
+        name=f"{config['model_name']}_{config['experiment_name']}"
     )
 
     device = get_device()
@@ -430,6 +430,7 @@ def main():
         
         # Model configuration
         'model_name': 'CustomBrainAneurysmCNN',
+        'experiment_name': 'nocap',
         # 'pretrained': True,
         'num_classes': 13,
         'dropout_rate': 0.3,
@@ -450,7 +451,7 @@ def main():
         # Loss weights
         'presence_weight': 1.0,
         'location_weight': 1.5,
-        'coordinate_weight': 3,  # 3.0, # None if you don't use coordinates
+        'coordinate_weight': None,  # 3.0, # None if you don't use coordinates
         'balance_classes': True, # if or not if to use the custom per class weights
 
         # Logging
