@@ -3,7 +3,7 @@ import torch
 from datasets import BrainAneurysmDataset
 from torchvision import transforms
 from torch.utils.data import DataLoader
-from models import BrainAneurysmCNN, BrainAneurysmCoordCNN, AneurysmLoss, NoOpLRScheduler, BrainAneurysmEfficientNet
+from models import BrainAneurysmCNN, BrainAneurysmCoordCNN, AneurysmLoss, NoOpLRScheduler, BrainAneurysmEfficientNet, DeepBrainAneurysmCNN, DeepBrainAneurysmCoordCNN
 import torch.optim as optim
 import numpy as np
 from tqdm import tqdm
@@ -210,6 +210,16 @@ def train_brain_aneurysm_model(config):
             version=config['custom_parameters']['efficientnet']['version'],
             retrain=config['custom_parameters']['efficientnet']['retrain'],
             with_coordinates=config['with_coordinates'],
+            dropout_rate=config['dropout_rate']
+        )
+    if config['model_name'] == 'DeepBrainAneurysmCNN':
+        if config['with_coordinates']:
+            ModelClass = DeepBrainAneurysmCoordCNN
+        else:
+            ModelClass = DeepBrainAneurysmCNN
+        model = ModelClass(
+            num_classes=config['num_classes'],
+            dropout_rate=config['dropout_rate']
         )
     if not model:
         raise Exception("No model found! Add model to training loop")
@@ -247,6 +257,13 @@ def train_brain_aneurysm_model(config):
         optimizer = optim.AdamW(
             model.parameters(),
             lr=config['learning_rate'],
+            weight_decay=config['weight_decay']
+        )
+    elif config['optimizer'] == 'sgd':
+        optimizer = optim.SGD(
+            params=model.parameters(),
+            lr=config['learning_rate'],
+            momentum=0.9,
             weight_decay=config['weight_decay']
         )
     else:
@@ -438,14 +455,14 @@ def main():
         'with_coordinates': True,
         
         # Model configuration
-        'model_name': 'BrainAneurysmEfficientNet',  # 'CustomBrainAneurysmCNN' or 'BrainAneurysmEfficientNet'
+        'model_name': 'DeepBrainAneurysmCNN',  # 'CustomBrainAneurysmCNN' or 'BrainAneurysmEfficientNet' or 'DeepBrainAneurysmCNN'
         'experiment_name': 'nocap',
         # 'pretrained': True,
         'num_classes': 13,
-        'dropout_rate': 0.3,
+        'dropout_rate': 0.5,
         'custom_parameters': {
             'efficientnet': {
-                'version': 'b0',
+                'version': 'b2',
                 'pretrained': True,
                 'retrain': True,
             }
@@ -461,9 +478,9 @@ def main():
         'num_epochs': 1,
         'learning_rate': 0.001,
         'weight_decay': 0.01,
-        'optimizer': 'adamw',  # 'adamw' or 'adam'
-        'ReduceLROnPlateau': True, # set this to false to remove or modify it in code 
-        
+        'optimizer': 'adamw',  # 'adamw' or 'adam' or 'sgd'
+        'ReduceLROnPlateau': True, # set this to false to remove or modify it in code
+
         # Loss weights
         'presence_weight': 1.0,
         'location_weight': 1.5,

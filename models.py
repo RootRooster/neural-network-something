@@ -2,13 +2,277 @@ import torch.nn as nn
 from torch.optim import Optimizer
 from torchvision import models
 
+import torch
+import torch.nn as nn
+
+class ResidualBlock(nn.Module):
+    """
+    Residual block with skip connection for better gradient flow
+    """
+    def __init__(self, in_channels, out_channels, stride=1, downsample=None):
+        super(ResidualBlock, self).__init__()
+        
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, 
+                              stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, 
+                              stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.downsample = downsample
+        
+    def forward(self, x):
+        identity = x
+        
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+        
+        out = self.conv2(out)
+        out = self.bn2(out)
+        
+        if self.downsample is not None:
+            identity = self.downsample(x)
+            
+        out += identity
+        out = self.relu(out)
+        
+        return out
+
+class DeepBrainAneurysmCNN(nn.Module):
+    """
+    Deeper CNN model for brain aneurysm detection with residual connections.
+    
+    Architecture features:
+    - 8 convolutional stages (1.5x deeper than original)
+    - Residual connections for better gradient flow
+    - Batch normalization and dropout for regularization
+    - Progressive channel expansion: 1->32->64->128->256->512->768->1024->1024
+    """
+    
+    def __init__(self, num_classes=13, dropout_rate=0.3):
+        super(DeepBrainAneurysmCNN, self).__init__()
+        
+        self.num_classes = num_classes
+        
+        # Initial convolution
+        self.initial_conv = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=7, stride=2, padding=3, bias=False),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        )
+        
+        # Stage 1: 32 -> 64 channels
+        self.stage1 = nn.Sequential(
+            self._make_residual_block(32, 64, stride=1),
+            self._make_residual_block(64, 64, stride=1)
+        )
+        
+        # Stage 2: 64 -> 128 channels
+        self.stage2 = nn.Sequential(
+            self._make_residual_block(64, 128, stride=2),
+            self._make_residual_block(128, 128, stride=1)
+        )
+        
+        # Stage 3: 128 -> 256 channels
+        self.stage3 = nn.Sequential(
+            self._make_residual_block(128, 256, stride=2),
+            self._make_residual_block(256, 256, stride=1)
+        )
+        
+        # Stage 4: 256 -> 512 channels
+        self.stage4 = nn.Sequential(
+            self._make_residual_block(256, 512, stride=2),
+            self._make_residual_block(512, 512, stride=1)
+        )
+        
+        # Stage 5: 512 -> 768 channels (new deeper layer)
+        self.stage5 = nn.Sequential(
+            self._make_residual_block(512, 768, stride=2),
+            self._make_residual_block(768, 768, stride=1)
+        )
+        
+        # Stage 6: 768 -> 1024 channels (new deeper layer)
+        self.stage6 = nn.Sequential(
+            self._make_residual_block(768, 1024, stride=2),
+            self._make_residual_block(1024, 1024, stride=1)
+        )
+        
+        # Stage 7: Additional depth with same channels (new deeper layer)
+        self.stage7 = nn.Sequential(
+            self._make_residual_block(1024, 1024, stride=1),
+            self._make_residual_block(1024, 1024, stride=1)
+        )
+        
+        # Global Average Pooling
+        self.global_avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        
+        # Classifier head with more capacity
+        self.classifier = nn.Sequential(
+            nn.Dropout(dropout_rate),
+            nn.Linear(1024, 2048),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),
+            nn.Linear(2048, 1024),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),
+            nn.Linear(1024, 512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),
+        )
+        
+        # Multi-output heads
+        self.aneurysm_present_head = nn.Linear(512, 1)
+        self.location_heads = nn.Linear(512, num_classes)
+        
+        # Initialize weights
+        self._initialize_weights()
+    
+    def _make_residual_block(self, in_channels, out_channels, stride=1):
+        """Create a residual block with optional downsampling"""
+        downsample = None
+        if stride != 1 or in_channels != out_channels:
+            downsample = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, 
+                         stride=stride, bias=False),
+                nn.BatchNorm2d(out_channels),
+            )
+        
+        return ResidualBlock(in_channels, out_channels, stride, downsample)
+    
+    def _initialize_weights(self):
+        """Initialize weights using Kaiming initialization for ReLU networks"""
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight)
+                nn.init.constant_(m.bias, 0)
+    
+    def forward(self, x):
+        # Initial feature extraction
+        x = self.initial_conv(x)
+        
+        # Progressive feature extraction through residual stages
+        x = self.stage1(x)
+        x = self.stage2(x)
+        x = self.stage3(x)
+        x = self.stage4(x)
+        x = self.stage5(x)
+        x = self.stage6(x)
+        x = self.stage7(x)
+        
+        # Global pooling and flatten
+        x = self.global_avgpool(x)
+        x = x.view(x.size(0), -1)
+        
+        # Shared features
+        features = self.classifier(x)
+        
+        # Multi-output predictions
+        aneurysm_present = self.aneurysm_present_head(features)
+        location_logits = self.location_heads(features)
+        
+        return {
+            'aneurysm_present': aneurysm_present,
+            'locations': location_logits
+        }
+
+class DeepBrainAneurysmCoordCNN(DeepBrainAneurysmCNN):
+    """
+    Deeper CNN with coordinate prediction capability
+    """
+    def __init__(self, num_classes=13, dropout_rate=0.3):
+        super().__init__(num_classes, dropout_rate)
+        
+        # Replace the classifier with shared features
+        self.shared_features = self.classifier
+        del self.classifier
+        
+        # Enhanced output heads
+        self.aneurysm_present_head = nn.Sequential(
+            nn.Dropout(dropout_rate),
+            nn.Linear(512, 256),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),
+            nn.Linear(256, 1)
+        )
+        
+        self.location_classification_head = nn.Sequential(
+            nn.Dropout(dropout_rate),
+            nn.Linear(512, 256),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),
+            nn.Linear(256, num_classes)
+        )
+
+        # Enhanced coordinate prediction branch
+        self.coordinate_features = nn.Sequential(
+            nn.Dropout(dropout_rate),
+            nn.Linear(512, 1024),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),
+            nn.Linear(1024, 512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate)
+        )
+
+        self.coordinate_regression_head = nn.Sequential(
+            nn.Linear(512, num_classes * 2),  # 2 coordinates (x, y) per class
+            nn.Sigmoid()
+        )
+        
+        self._initialize_weights()
+    
+    def forward(self, x):
+        # Feature extraction through all stages
+        x = self.initial_conv(x)
+        x = self.stage1(x)
+        x = self.stage2(x)
+        x = self.stage3(x)
+        x = self.stage4(x)
+        x = self.stage5(x)
+        x = self.stage6(x)
+        x = self.stage7(x)
+        
+        # Global pooling and flatten
+        x = self.global_avgpool(x)
+        x = x.view(x.size(0), -1)
+        
+        # Shared feature extraction
+        shared_features = self.shared_features(x)
+        
+        # Multi-task predictions
+        aneurysm_present = self.aneurysm_present_head(shared_features)
+        location_logits = self.location_classification_head(shared_features)
+        
+        # Coordinate prediction
+        coord_features = self.coordinate_features(shared_features)
+        coordinate_preds = self.coordinate_regression_head(coord_features)
+        
+        batch_size = coordinate_preds.shape[0]
+        coordinate_preds = coordinate_preds.view(batch_size, self.num_classes, 2)
+        
+        return {
+            'aneurysm_present': aneurysm_present,
+            'locations': location_logits,
+            'coordinates': coordinate_preds
+        }
+
+
 class BrainAneurysmEfficientNet(nn.Module):
     """
     CNN model for brain aneurysm detection and location classification.
     
     Based on EfficientNet
     """
-    def __init__(self, num_classes=13, pretrained=True, retrain=True, version='b0', with_coordinates=True):
+    def __init__(self, num_classes=13, pretrained=True, retrain=True, version='b0', with_coordinates=True, dropout_rate=0.5):
         super().__init__()
         self.num_classes = num_classes
         efficientnet_models = {
@@ -63,14 +327,14 @@ class BrainAneurysmEfficientNet(nn.Module):
         self.aneurysm_present_head = nn.Sequential(
             nn.Linear(in_features, 512),
             nn.LeakyReLU(negative_slope=0.01),
-            nn.Dropout(p=0.3),
+            nn.Dropout(p=dropout_rate),
             nn.Linear(512, 1)
         ) 
 
         self.location_heads = nn.Sequential(
             nn.Linear(in_features, 512),
             nn.LeakyReLU(negative_slope=0.01),
-            nn.Dropout(p=0.3),
+            nn.Dropout(p=dropout_rate),
             nn.Linear(512, num_classes)
         )
 
@@ -79,7 +343,7 @@ class BrainAneurysmEfficientNet(nn.Module):
             self.coordinate_regression_head = nn.Sequential(
                 nn.Linear(in_features, 512),
                 nn.LeakyReLU(negative_slope=0.01),
-                nn.Dropout(p=0.3),
+                nn.Dropout(p=dropout_rate),
                 nn.Linear(512, num_classes * 2),
                 nn.Sigmoid()
             )
@@ -101,8 +365,7 @@ class BrainAneurysmEfficientNet(nn.Module):
             batch_size = coordinate_preds.shape[0]
             coordinate_preds = coordinate_preds.view(batch_size, self.num_classes, 2)
             out['coordinates'] = coordinate_preds
-        return out 
-
+        return out
         
 class BrainAneurysmCNN(nn.Module):
     """
