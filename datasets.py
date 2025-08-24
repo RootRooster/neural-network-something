@@ -312,7 +312,14 @@ class BrainAneurysmDataset(Dataset):
             weights.append(weight)
         
         return torch.tensor(weights, dtype=torch.float32)
-    
+
+    def get_presence_pos_weight(self) -> torch.Tensor:
+        """
+        Get the positive class weight for the presence of an aneurysm.
+        """
+        pos_weight = [len(self) / self.classification_df['Aneurysm Present'].sum() - 1]
+        return torch.tensor(pos_weight, dtype=torch.float32)
+
     def get_aneurysm_statistics(self) -> Dict[str, Any]:
         """Get statistics about aneurysm distribution in the dataset."""
         stats = {}

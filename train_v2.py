@@ -235,12 +235,14 @@ def train_brain_aneurysm_model(config):
     criterion = None
     if config['balance_classes']:
         class_weights = train_dataset.get_class_weights().to(device)
+        presence_pos_weight = train_dataset.get_presence_pos_weight().to(device)
         criterion = AneurysmLoss(
             location_weights=class_weights,
             presence_weight=config['presence_weight'],
             location_weight=config['location_weight'],
             coordinate_weight=config['coordinate_weight'],
             with_coordinates=config['with_coordinates'],
+            presence_pos_weight=presence_pos_weight
         )
     else:
         criterion = AneurysmLoss(
@@ -276,7 +278,7 @@ def train_brain_aneurysm_model(config):
     # Learning rate scheduler
     if config['ReduceLROnPlateau']:
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', factor=0.5, patience=10
+            optimizer, mode='min', factor=0.5, patience=15
         )
     else:
         # Custom scheduler to do nothing
@@ -286,7 +288,7 @@ def train_brain_aneurysm_model(config):
     best_val_loss = float('inf')
 
     # Get matrics collections
-    custom_metrics = setup_metrics(device)
+    custom_metrics = setup_metrics(device, threshold=config['class_threshold'])
     
     for epoch in range(config['num_epochs']):
         print(f"\n{'='*60}")
@@ -452,7 +454,7 @@ def main():
         'val_labels_csv': './validation_labels.csv',
 
         # Coordinates mode:
-        'with_coordinates': True,
+        'with_coordinates': False,
         
         # Model configuration
         'model_name': 'DeepBrainAneurysmCNN',  # 'CustomBrainAneurysmCNN' or 'BrainAneurysmEfficientNet' or 'DeepBrainAneurysmCNN'
@@ -478,17 +480,18 @@ def main():
         'num_epochs': 1,
         'learning_rate': 0.001,
         'weight_decay': 0.01,
-        'optimizer': 'adamw',  # 'adamw' or 'adam' or 'sgd'
+        'optimizer': 'sgd',  # 'adamw' or 'adam' or 'sgd'
         'ReduceLROnPlateau': True, # set this to false to remove or modify it in code
 
         # Loss weights
-        'presence_weight': 1.0,
-        'location_weight': 1.5,
+        'presence_weight': 0.5,
+        'location_weight': 2.0,
         'coordinate_weight': 1,  # 3.0, # None if you don't use coordinates
         'balance_classes': True, # if or not if to use the custom per class weights
 
         # Logging
         'log_every': 25,
+        'class_threshold': 0.5
     }
     
     print("🚀 Starting Brain Aneurysm Detection Training")

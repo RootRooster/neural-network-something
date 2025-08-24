@@ -538,7 +538,7 @@ class AneurysmLoss(nn.Module):
     - Weighted binary cross entropy for location classification
     """
     
-    def __init__(self, location_weights=None, presence_weight=1.0, location_weight=1.0, coordinate_weight=2.0, with_coordinates=False):
+    def __init__(self, location_weights=None, presence_weight=1.0, location_weight=1.0, coordinate_weight=2.0, with_coordinates=False, presence_pos_weight=None):
         super(AneurysmLoss, self).__init__()
         self.presence_weight = presence_weight
         self.location_weight = location_weight
@@ -546,7 +546,10 @@ class AneurysmLoss(nn.Module):
         self.with_coordinates = with_coordinates
 
         # Binary cross entropy for aneurysm presence
-        self.bce_loss = nn.BCEWithLogitsLoss()
+        if presence_pos_weight is not None:
+            self.bce_loss = nn.BCEWithLogitsLoss(pos_weight=presence_pos_weight)
+        else:
+            self.bce_loss = nn.BCEWithLogitsLoss()
 
         if self.with_coordinates:
             self.coordinate_loss = nn.SmoothL1Loss(reduction='none')
