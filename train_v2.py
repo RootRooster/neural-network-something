@@ -380,10 +380,10 @@ def train_brain_aneurysm_model(config):
                 'optimizer_state_dict': optimizer.state_dict(),
                 'val_loss': validation_loss_metrics['loss'],
                 'config': config
-            }, 'best_model.pth')
-            
+            }, f'best_model_{config["instance"]}.pth')
+
             # Save to wandb
-            wandb.save('best_model.pth')
+            wandb.save(f'best_model_{config["instance"]}.pth')
             print(f"💾 Saved best model (Val Loss: {validation_loss_metrics['loss']:.4f})")
             
             # Update wandb summary
@@ -418,6 +418,7 @@ def main():
     
     # Configuration
     config = {
+        'instance': '0',
         # Data paths
         'data_dir': './data',
         'train_csv': './train.csv',
@@ -437,7 +438,7 @@ def main():
         
         # Data configuration
         'target_size': (512, 512),
-        'normalization': 'local_minmax',
+        'normalization': 'percentile',
         'batch_size': 16,
         'num_workers': 4,
         

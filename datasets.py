@@ -95,13 +95,13 @@ class BrainAneurysmDataset(Dataset):
                 self.labels_df['SOPInstanceUID'].astype(str)
             )
         
-        if normalization in ['zscore', 'minmax', 'percentile'] and intensity_range is None:
-            print("Computing global dataset statistics...")
-            self._compute_global_stats()
-        
         # Filter valid samples (check if corresponding .npy files exist)
         self.valid_samples = []
         self._validate_samples()
+
+        if normalization in ['zscore', 'minmax', 'percentile'] and intensity_range is None:
+            print("Computing global dataset statistics...")
+            self._compute_global_stats()
         
         print(f"Loaded {len(self.valid_samples)} valid samples for {split} split")
 
