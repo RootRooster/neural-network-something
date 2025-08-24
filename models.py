@@ -1,27 +1,109 @@
 import torch.nn as nn
 from torch.optim import Optimizer
+from torchvision import models
 
-# EPOCH 20 SUMMARY:
-# Train Loss: 3.0255 | Val Loss: 2.9627
-# Train - Presence: 0.5457, Location: 1.2399
-# Val   - Presence: 0.5129, Location: 1.2249
-# 💾 Saved checkpoint for epoch 20
-# 
-# 🎉 Training completed!
-# Best validation loss: 2.9409
-#
-#    criterion = AneurysmLoss(
-#        location_weights=class_weights,
-#        presence_weight=1.0,
-#        location_weight=2.0  # Weight location loss higher since it's more specific
-#    )
-#    
-#    # Create optimizer
-#    optimizer = optim.AdamW(
-#        model.parameters(), 
-#        lr=0.001, 
-#        weight_decay=0.01
-#    )
+class BrainAneurysmEfficientNet(nn.Module):
+    """
+    CNN model for brain aneurysm detection and location classification.
+    
+    Based on EfficientNet
+    """
+    def __init__(self, num_classes=13, pretrained=True, retrain=True, version='b0', with_coordinates=True):
+        super().__init__()
+        self.num_classes = num_classes
+        efficientnet_models = {
+            'b0': (models.efficientnet_b0, models.EfficientNet_B0_Weights.DEFAULT),
+            'b1': (models.efficientnet_b1, models.EfficientNet_B1_Weights.DEFAULT),
+            'b2': (models.efficientnet_b2, models.EfficientNet_B2_Weights.DEFAULT),
+            'b3': (models.efficientnet_b3, models.EfficientNet_B3_Weights.DEFAULT),
+            'b4': (models.efficientnet_b4, models.EfficientNet_B4_Weights.DEFAULT),
+            'b5': (models.efficientnet_b5, models.EfficientNet_B5_Weights.DEFAULT),
+            'b6': (models.efficientnet_b6, models.EfficientNet_B6_Weights.DEFAULT),
+            'b7': (models.efficientnet_b7, models.EfficientNet_B7_Weights.DEFAULT),
+            # You can also add EfficientNet V2 variants:
+            'v2_s': (models.efficientnet_v2_s, models.EfficientNet_V2_S_Weights.DEFAULT),
+            'v2_m': (models.efficientnet_v2_m, models.EfficientNet_V2_M_Weights.DEFAULT),
+            'v2_l': (models.efficientnet_v2_l, models.EfficientNet_V2_L_Weights.DEFAULT),
+        }
+        
+        if version not in efficientnet_models:
+            raise ValueError(f"Unsupported EfficientNet version: {version}. "
+                           f"Supported versions: {list(efficientnet_models.keys())}")
+        
+        model_constructor, default_weights = efficientnet_models[version]
+        
+        # Load the base model
+        base_model = model_constructor(weights=default_weights if pretrained else None)
+        
+        original_first_conv = base_model.features[0][0]
+        original_weights = original_first_conv.weight.data
+        
+        out_channels = original_first_conv.out_channels
+        
+        new_first_conv = nn.Conv2d(
+            in_channels=1, # this gets changed
+            out_channels=out_channels,
+            kernel_size=original_first_conv.kernel_size,
+            stride=original_first_conv.stride,
+            padding=original_first_conv.padding,
+            bias=original_first_conv.bias is not None
+        )
+        
+        # Average the weights across input channels: [out_channels, 3, 3, 3] -> [out_channels, 1, 3, 3]
+        new_first_conv.weight.data = original_weights.mean(dim=1, keepdim=True)
+        base_model.features[0][0] = new_first_conv        
+        
+        self.backbone = base_model.features
+        in_features = base_model.classifier[1].in_features
+        
+        if pretrained and not retrain:
+            for param in self.backbone.parameters():
+                param.requires_grad = False
+        
+        self.aneurysm_present_head = nn.Sequential(
+            nn.Linear(in_features, 512),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.Dropout(p=0.3),
+            nn.Linear(512, 1)
+        ) 
+
+        self.location_heads = nn.Sequential(
+            nn.Linear(in_features, 512),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.Dropout(p=0.3),
+            nn.Linear(512, num_classes)
+        )
+
+        self.with_coordinates = with_coordinates
+        if with_coordinates:
+            self.coordinate_regression_head = nn.Sequential(
+                nn.Linear(in_features, 512),
+                nn.LeakyReLU(negative_slope=0.01),
+                nn.Dropout(p=0.3),
+                nn.Linear(512, num_classes * 2),
+                nn.Sigmoid()
+            )
+    
+    def forward(self, x):
+        features = self.backbone(x)
+        features = features.mean([2,3])
+
+        aneurysm_present = self.aneurysm_present_head(features)
+        location_logits = self.location_heads(features)
+
+        out = {
+            'aneurysm_present': aneurysm_present,
+            'locations': location_logits,
+        }
+        
+        if self.with_coordinates:
+            coordinate_preds = self.coordinate_regression_head(features)
+            batch_size = coordinate_preds.shape[0]
+            coordinate_preds = coordinate_preds.view(batch_size, self.num_classes, 2)
+            out['coordinates'] = coordinate_preds
+        return out 
+
+        
 class BrainAneurysmCNN(nn.Module):
     """
     CNN model for brain aneurysm detection and location classification.
@@ -186,7 +268,6 @@ class BrainAneurysmCoordCNN(BrainAneurysmCNN):
             'coordinates': coordinate_preds
         }
         
-
 class AneurysmLoss(nn.Module):
     """
     Combined loss for aneurysm detection:
@@ -259,8 +340,6 @@ class AneurysmLoss(nn.Module):
             results['total_loss'] = total_loss 
             results['coordinate_loss'] = coordinate_loss
         return results
-
-
 
 class NoOpLRScheduler:
     def __init__(self, optimizer):

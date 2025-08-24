@@ -3,7 +3,7 @@ import torch
 from datasets import BrainAneurysmDataset
 from torchvision import transforms
 from torch.utils.data import DataLoader
-from models import BrainAneurysmCNN, BrainAneurysmCoordCNN, AneurysmLoss, NoOpLRScheduler
+from models import BrainAneurysmCNN, BrainAneurysmCoordCNN, AneurysmLoss, NoOpLRScheduler, BrainAneurysmEfficientNet
 import torch.optim as optim
 import numpy as np
 from tqdm import tqdm
@@ -202,6 +202,14 @@ def train_brain_aneurysm_model(config):
         model = ModelClass(
             num_classes=config['num_classes'],
             dropout_rate=config['dropout_rate']
+        )
+    if config['model_name'] == 'BrainAneurysmEfficientNet':
+        model = BrainAneurysmEfficientNet(
+            num_classes=config['num_classes'],
+            pretrained=config['custom_parameters']['efficientnet']['pretrained'],
+            version=config['custom_parameters']['efficientnet']['version'],
+            retrain=config['custom_parameters']['efficientnet']['retrain'],
+            with_coordinates=config['with_coordinates'],
         )
     if not model:
         raise Exception("No model found! Add model to training loop")
@@ -427,15 +435,22 @@ def main():
         'val_labels_csv': './validation_labels.csv',
 
         # Coordinates mode:
-        'with_coordinates': False,
+        'with_coordinates': True,
         
         # Model configuration
-        'model_name': 'CustomBrainAneurysmCNN',
+        'model_name': 'BrainAneurysmEfficientNet',  # 'CustomBrainAneurysmCNN' or 'BrainAneurysmEfficientNet'
         'experiment_name': 'nocap',
         # 'pretrained': True,
         'num_classes': 13,
         'dropout_rate': 0.3,
-        
+        'custom_parameters': {
+            'efficientnet': {
+                'version': 'b0',
+                'pretrained': True,
+                'retrain': True,
+            }
+        },
+
         # Data configuration
         'target_size': (512, 512),
         'normalization': 'percentile',
@@ -452,7 +467,7 @@ def main():
         # Loss weights
         'presence_weight': 1.0,
         'location_weight': 1.5,
-        'coordinate_weight': None,  # 3.0, # None if you don't use coordinates
+        'coordinate_weight': 1,  # 3.0, # None if you don't use coordinates
         'balance_classes': True, # if or not if to use the custom per class weights
 
         # Logging
