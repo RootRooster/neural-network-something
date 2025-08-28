@@ -484,10 +484,10 @@ def main():
         'ReduceLROnPlateau': True, # set this to false to remove or modify it in code
 
         # Loss weights
-        'presence_weight': 0.5,
+        'presence_weight': 1.0,
         'location_weight': 2.0,
         'coordinate_weight': 1,  # 3.0, # None if you don't use coordinates
-        'balance_classes': True, # if or not if to use the custom per class weights
+        'balance_classes': False, # if or not if to use the custom per class weights
 
         # Logging
         'log_every': 25,
